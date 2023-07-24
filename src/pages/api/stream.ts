@@ -1,57 +1,57 @@
-import type { APIRoute } from "astro"
+import type { APIRoute } from "astro";
 import {
   createParser,
   ParsedEvent,
-  ReconnectInterval
-} from "eventsource-parser"
+  ReconnectInterval,
+} from "eventsource-parser";
 
-const localEnv = import.meta.env.OPENAI_API_KEY
-const vercelEnv = process.env.OPENAI_API_KEY
+const localEnv = import.meta.env.OPENAI_API_KEY;
+const vercelEnv = process.env.OPENAI_API_KEY;
 
 const apiKeys = ((localEnv || vercelEnv)?.split(/\s*\|\s*/) ?? []).filter(
   Boolean
-)
+);
 
-export const post: APIRoute = async context => {
-  const body = await context.request.json()
+export const post: APIRoute = async (context) => {
+  const body = await context.request.json();
   const apiKey = apiKeys.length
     ? apiKeys[Math.floor(Math.random() * apiKeys.length)]
-    : ""
-  let { messages, key = apiKey, temperature = 0.6 } = body
+    : "";
+  let { messages, key = apiKey, temperature = 0.6 } = body;
 
-  const encoder = new TextEncoder()
-  const decoder = new TextDecoder()
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
 
-  if (!key.startsWith("sk-")) key = apiKey
+  if (!key.startsWith("sk-")) key = apiKey;
   if (!key) {
-    return new Response("没有填写 OpenAI API key")
+    return new Response("没有填写 OpenAI API key");
   }
   if (!messages) {
-    return new Response("没有输入任何文字")
+    return new Response("没有输入任何文字");
   }
 
   const completion = await fetch("https://api.openai.com/v1/chat/completions", {
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`
+      Authorization: `Bearer ${key}`,
     },
     method: "POST",
     body: JSON.stringify({
-      model: "gpt-4-0314",
+      model: "gpt-4",
       messages,
       temperature,
-      stream: true
-    })
-  })
+      stream: true,
+    }),
+  });
 
   const stream = new ReadableStream({
     async start(controller) {
       const streamParser = (event: ParsedEvent | ReconnectInterval) => {
         if (event.type === "event") {
-          const data = event.data
+          const data = event.data;
           if (data === "[DONE]") {
-            controller.close()
-            return
+            controller.close();
+            return;
           }
           try {
             // response = {
@@ -63,22 +63,22 @@ export const post: APIRoute = async context => {
             //     { delta: { content: '你' }, index: 0, finish_reason: null }
             //   ],
             // }
-            const json = JSON.parse(data)
-            const text = json.choices[0].delta?.content
-            const queue = encoder.encode(text)
-            controller.enqueue(queue)
+            const json = JSON.parse(data);
+            const text = json.choices[0].delta?.content;
+            const queue = encoder.encode(text);
+            controller.enqueue(queue);
           } catch (e) {
-            controller.error(e)
+            controller.error(e);
           }
         }
-      }
+      };
 
-      const parser = createParser(streamParser)
+      const parser = createParser(streamParser);
       for await (const chunk of completion.body as any) {
-        parser.feed(decoder.decode(chunk))
+        parser.feed(decoder.decode(chunk));
       }
-    }
-  })
+    },
+  });
 
-  return new Response(stream)
-}
+  return new Response(stream);
+};
